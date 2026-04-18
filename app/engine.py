@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -36,6 +37,45 @@ _ensure_fish_speech_on_path()
 from ._warmup_patch import apply_patch as _apply_warmup_patch  # noqa: E402
 
 
+def _clamp_max_seq_len(ckpt_dir: Path, target: int) -> None:
+    """Rewrite ckpt_dir/config.json so `max_seq_len` is at most `target`.
+
+    Fish-Speech pre-allocates a `max_seq_len × max_seq_len` causal mask and
+    a KV cache sized by `max_seq_len` at model construction time. The
+    shipped value of 32768 burns several GB of VRAM before a single token
+    is generated; clamping it here means setup_caches(model.config.max_seq_len)
+    and the __init__ mask both honor the smaller bound.
+    """
+    cfg_path = ckpt_dir / "config.json"
+    if not cfg_path.is_file():
+        return
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning("could not read %s: %s", cfg_path, e)
+        return
+
+    current = int(cfg.get("max_seq_len", 0))
+    if current <= target:
+        return
+
+    log.info(
+        "clamping config.max_seq_len %d -> %d in %s (saves ~%.1f GB VRAM)",
+        current,
+        target,
+        cfg_path,
+        # Rough: causal mask scales quadratically (bool), KV cache linearly.
+        (current**2 - target**2) / (1024**3),
+    )
+    cfg["max_seq_len"] = target
+    try:
+        with open(cfg_path, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2)
+    except OSError as e:
+        log.warning("could not write %s: %s", cfg_path, e)
+
+
 def _download_if_missing(model_id: str, target_dir: Path) -> None:
     codec_path = target_dir / "codec.pth"
     if codec_path.is_file():
@@ -63,6 +103,7 @@ class TTSEngine:
 
         local_dir = settings.local_model_dir
         _download_if_missing(settings.fishspeech_model, local_dir)
+        _clamp_max_seq_len(local_dir, settings.fishspeech_max_seq_len)
 
         device = settings.resolved_device
 
@@ -79,6 +120,10 @@ class TTSEngine:
         llama_dir = self._ensure_quantized_checkpoint(
             local_dir, effective_quant, settings.fishspeech_int4_groupsize
         )
+        # Quantized checkpoints are copied from src_dir so they inherit the
+        # clamped config.json, but an existing quantized dir from a prior run
+        # with a higher limit could still be stale — be idempotent.
+        _clamp_max_seq_len(llama_dir, settings.fishspeech_max_seq_len)
 
         log.info(
             "loading Fish-Speech model=%s device=%s half=%s compile=%s quant=%s warmup_tokens=%d",
@@ -165,6 +210,28 @@ class TTSEngine:
         if (dst_dir / "model.pth").is_file():
             log.info("quantized checkpoint already present at %s", dst_dir)
             return dst_dir
+
+        if mode == "int4":
+            # fish-speech's int4 packer calls torch.ops.aten._convert_weight_to_int4pack
+            # with an int32 tensor, which worked on torch<=2.3 but torch>=2.4
+            # requires a uint8 packed layout. Upstream hasn't updated, so fail
+            # fast with a useful message instead of the opaque
+            # "Expected in.dtype() == at::kByte" RuntimeError.
+            import torch
+
+            torch_major, torch_minor = (
+                int(x) for x in torch.__version__.split(".")[:2]
+            )
+            if (torch_major, torch_minor) >= (2, 4):
+                raise RuntimeError(
+                    f"FISHSPEECH_QUANTIZATION=int4 is not compatible with the "
+                    f"installed torch=={torch.__version__}. Fish-Speech's "
+                    f"tools/llama/quantize.py still uses the pre-2.4 int4 pack "
+                    f"API (passes int32 to _convert_weight_to_int4pack, which "
+                    f"now requires uint8). Use FISHSPEECH_QUANTIZATION=int8 "
+                    f"instead — on a 12 GB card that's ~5 GB weights, plenty of "
+                    f"headroom for s2-pro."
+                )
 
         self._quantize_checkpoint(src_dir, dst_dir, mode, groupsize)
         return dst_dir

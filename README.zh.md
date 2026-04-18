@@ -189,7 +189,7 @@ with client.audio.speech.with_streaming_response.create(
 | `FISHSPEECH_CUDA_INDEX` | `0` | `cuda` / `auto` 时选择的 `cuda:N` |
 | `FISHSPEECH_HALF` | `false` | `true` → `torch.half`（fp16）；`false` → `torch.bfloat16` |
 | `FISHSPEECH_COMPILE` | `false` | 启用 `torch.compile` —— 首次请求慢，后续更快 |
-| `FISHSPEECH_QUANTIZATION` | `none` | `none` / `int8` / `int4`，仅对 LLaMA 主干做权重量化。首次启动时量化一次，结果缓存为原 checkpoint 相邻的 `<model>-int8` 或 `<model>-int4-g<size>-q/` 目录。`int4` 在量化阶段需要 CUDA；非 CUDA 设备会自动降级为 `none`。 |
+| `FISHSPEECH_QUANTIZATION` | `none` | `none` / `int8` / `int4`，仅对 LLaMA 主干做权重量化。首次启动时量化一次，结果缓存为原 checkpoint 相邻的 `<model>-int8` 或 `<model>-int4-g<size>-q/` 目录。`int4` 在量化阶段需要 CUDA；非 CUDA 设备会自动降级为 `none`。**⚠️ `int4` 在 torch ≥ 2.4 下已损坏**（fish-speech 上游没跟上新的 `_convert_weight_to_int4pack` API），请用 `int8`。 |
 | `FISHSPEECH_INT4_GROUPSIZE` | `128` | `int4` 量化的 group size（可选 `32` / `64` / `128` / `256`）。 |
 | `FISHSPEECH_CACHE_DIR` | — | 加载模型前写入 `HF_HOME` |
 | `FISHSPEECH_VOICES_DIR` | `/voices` | 音色目录 |
@@ -201,6 +201,7 @@ with client.audio.speech.with_streaming_response.create(
 | `FISHSPEECH_NORMALIZE` | `true` | 请求 `normalize` 字段的默认值 |
 | `FISHSPEECH_USE_MEMORY_CACHE` | `true` | 在同一进程内缓存参考音频的 VQ 编码 |
 | `FISHSPEECH_WARMUP_TOKENS` | `64` | 启动预热时生成的 token 数。上游硬编码 1024，大模型（s2-pro）上会阻塞容器 ready 30-90 秒。设为 `0` 可完全跳过——代价是首请求更慢（开 `FISHSPEECH_COMPILE=true` 时尤甚）。 |
+| `FISHSPEECH_MAX_SEQ_LEN` | `4096` | 把 `config.json:max_seq_len`（上游默认 32768）夹到此值，限制 KV cache 与 causal mask 的预分配。32768 会在推理前就占 3-4 GB 显存，12 GB 卡会溢出到共享显存导致吞吐暴跌。TTS 单次 chunk 一般 <2048；出现 sequence-length assertion 再调高。 |
 | `MAX_INPUT_CHARS` | `8000` | `input` 字段上限 |
 | `DEFAULT_RESPONSE_FORMAT` | `mp3` | |
 | `HOST` | `0.0.0.0` | |

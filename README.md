@@ -189,7 +189,7 @@ Returns model name, device, sample rate and status for health checks.
 | `FISHSPEECH_CUDA_INDEX` | `0` | Selects `cuda:N` when device is `cuda` or `auto` |
 | `FISHSPEECH_HALF` | `false` | `true` → `torch.half` (fp16); `false` → `torch.bfloat16` |
 | `FISHSPEECH_COMPILE` | `false` | Enable `torch.compile` — first request is slow, later ones are faster |
-| `FISHSPEECH_QUANTIZATION` | `none` | `none` / `int8` / `int4`. Weight-only quantization for the LLaMA backbone. Quantization runs once on first startup, the result is cached as `<model>-int8` / `<model>-int4-g<size>-q/` next to the original checkpoint. `int4` requires CUDA at quantize time; non-CUDA devices fall back to `none`. |
+| `FISHSPEECH_QUANTIZATION` | `none` | `none` / `int8` / `int4`. Weight-only quantization for the LLaMA backbone. Quantization runs once on first startup, the result is cached as `<model>-int8` / `<model>-int4-g<size>-q/` next to the original checkpoint. `int4` requires CUDA at quantize time; non-CUDA devices fall back to `none`. **⚠️ `int4` is broken on torch ≥ 2.4** because fish-speech upstream hasn't updated to the new `_convert_weight_to_int4pack` API — use `int8` instead. |
 | `FISHSPEECH_INT4_GROUPSIZE` | `128` | Group size for `int4` (one of `32` / `64` / `128` / `256`). |
 | `FISHSPEECH_CACHE_DIR` | — | Sets `HF_HOME` before model load |
 | `FISHSPEECH_VOICES_DIR` | `/voices` | Voices directory |
@@ -201,6 +201,7 @@ Returns model name, device, sample rate and status for health checks.
 | `FISHSPEECH_NORMALIZE` | `true` | Default value of the `normalize` request field |
 | `FISHSPEECH_USE_MEMORY_CACHE` | `true` | Cache reference-audio VQ codes between requests (per-instance) |
 | `FISHSPEECH_WARMUP_TOKENS` | `64` | Tokens to generate during startup warm-up. Upstream hard-codes 1024 which blocks container readiness for 30-90s on large models (s2-pro). Set to `0` to skip entirely — first request will then be slower, especially with `FISHSPEECH_COMPILE=true`. |
+| `FISHSPEECH_MAX_SEQ_LEN` | `4096` | Clamp `config.json:max_seq_len` (ships at 32768) to limit KV cache + causal-mask pre-allocation. The shipped 32768 burns ~3-4 GB VRAM before inference, which on 12 GB cards spills into shared memory and kills throughput. TTS chunks stay well under 2048; raise only if you hit sequence-length assertion errors. |
 | `MAX_INPUT_CHARS` | `8000` | Upper bound for the `input` field |
 | `DEFAULT_RESPONSE_FORMAT` | `mp3` | |
 | `HOST` | `0.0.0.0` | |
