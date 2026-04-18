@@ -32,6 +32,11 @@ def _ensure_fish_speech_on_path() -> None:
 
 _ensure_fish_speech_on_path()
 
+# Must run after fish_speech is importable and before any model load.
+from ._fish_tokenizer_patch import apply_patch as _apply_tokenizer_patch  # noqa: E402
+
+_apply_tokenizer_patch()
+
 
 def _download_if_missing(model_id: str, target_dir: Path) -> None:
     codec_path = target_dir / "codec.pth"

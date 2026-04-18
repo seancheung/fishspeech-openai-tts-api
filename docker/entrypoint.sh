@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${FISHSPEECH_MODEL:=fishaudio/openaudio-s1-mini}"
+: "${FISHSPEECH_MODEL:=fishaudio/s1-mini}"
 : "${FISHSPEECH_CHECKPOINTS_DIR:=/checkpoints}"
 : "${FISHSPEECH_VOICES_DIR:=/voices}"
 : "${FISHSPEECH_DEVICE:=auto}"

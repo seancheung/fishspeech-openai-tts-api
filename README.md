@@ -60,7 +60,15 @@ docker run --rm -p 8000:8000 \
 
 Model weights are pulled from HuggingFace on first start into `/checkpoints/<model-name>/`. Mounting `/checkpoints` persists them across container restarts.
 
-> **GPU prerequisites**: NVIDIA driver + [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) on Linux. On Windows use Docker Desktop + WSL2 + NVIDIA Windows driver; no host CUDA toolkit required. `openaudio-s1-mini` runs comfortably on ≥8 GB VRAM.
+> **Gated model**: `fishaudio/s1-mini` requires accepting the license on HuggingFace. After that, pass a token to the container so `huggingface_hub` can download:
+>
+> ```bash
+> -e HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+> ```
+>
+> Alternatively pre-download to the host and mount `-v ./checkpoints:/checkpoints` — the service skips the download if `codec.pth` is already present.
+
+> **GPU prerequisites**: NVIDIA driver + [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) on Linux. On Windows use Docker Desktop + WSL2 + NVIDIA Windows driver; no host CUDA toolkit required. `s1-mini` runs comfortably on ≥8 GB VRAM; `s2-pro` (~9 GB safetensors) wants ≥16 GB bf16, or ≥10 GB with int8.
 
 ### 3. docker-compose
 
@@ -130,7 +138,7 @@ Request fields:
 | `normalize` | bool | Optional en/zh text normalization (default `true`) |
 | `seed` | int | Optional RNG seed for reproducible output |
 
-Output audio is mono; sample rate is decided by the model's decoder (typically 44.1 kHz for `openaudio-s1-mini`). `pcm` is raw s16le.
+Output audio is mono; sample rate is decided by the model's decoder (typically 44.1 kHz for `s1-mini`). `pcm` is raw s16le.
 
 ### POST `/v1/audio/direct`
 
@@ -174,7 +182,7 @@ Returns model name, device, sample rate and status for health checks.
 
 | Variable | Default | Description |
 |---|---|---|
-| `FISHSPEECH_MODEL` | `fishaudio/openaudio-s1-mini` | HuggingFace repo id or a local directory name under `/checkpoints/` |
+| `FISHSPEECH_MODEL` | `fishaudio/s1-mini` | HuggingFace repo id or a local directory name under `/checkpoints/` |
 | `FISHSPEECH_CHECKPOINTS_DIR` | `/checkpoints` | Directory where checkpoints live (and where they're downloaded to on first start) |
 | `FISHSPEECH_DECODER_CONFIG_NAME` | `modded_dac_vq` | Decoder config, matches the `codec.pth` shipped with the model |
 | `FISHSPEECH_DEVICE` | `auto` | `auto` → CUDA > MPS > CPU. Or `cuda` / `mps` / `cpu` |
@@ -226,7 +234,9 @@ docker buildx build -f docker/Dockerfile.cpu \
 - **First-request warm-up**: Fish-Speech performs a warm-up run at startup, so the container is "ready" only after the health check flips to `ok`.
 - **License**: Fish-Speech / OpenAudio checkpoints ship under the [Fish Audio Research License](https://github.com/fishaudio/fish-speech/blob/main/LICENSE). Review it before commercial use.
 - **No built-in auth** — deploy behind a reverse proxy (Nginx, Cloudflare, etc.) if you need token-based access control.
-- **Model variants**: the default is `fishaudio/openaudio-s1-mini`. You can point `FISHSPEECH_MODEL` at any other Fish-Speech-compatible HuggingFace repo (e.g. `fishaudio/s2-pro`) as long as the archive contains both the LLaMA weights and `codec.pth`.
+- **Model variants**: the default is `fishaudio/s1-mini` (the repo formerly known as `fishaudio/openaudio-s1-mini`). You can point `FISHSPEECH_MODEL` at any other Fish-Speech-compatible HuggingFace repo as long as the archive contains `codec.pth` plus a LLaMA weight file (`model.pth` or `model*.safetensors`):
+  - `fishaudio/s1-mini` — ~1.7 GB LLaMA + 1.9 GB codec, tiktoken tokenizer. **Default**.
+  - `fishaudio/s2-pro` — ~9 GB sharded safetensors + standard HF tokenizer. Higher quality, much larger; needs ≥16 GB VRAM in bf16 or ≥10 GB with `FISHSPEECH_QUANTIZATION=int8`.
 
 ## Project layout
 
