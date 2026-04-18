@@ -14,7 +14,7 @@ Quantization = Literal["none", "int8", "int4"]
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", case_sensitive=False, extra="ignore")
 
-    fishspeech_model: str = Field(default="fishaudio/s1-mini")
+    fishspeech_model: str = Field(default="fishaudio/s2-pro")
     fishspeech_checkpoints_dir: str = Field(default="/checkpoints")
     fishspeech_decoder_config_name: str = Field(default="modded_dac_vq")
     fishspeech_device: Literal["auto", "cuda", "mps", "cpu"] = Field(default="auto")

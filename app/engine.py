@@ -33,10 +33,7 @@ def _ensure_fish_speech_on_path() -> None:
 _ensure_fish_speech_on_path()
 
 # Must run after fish_speech is importable and before any model load.
-from ._fish_tokenizer_patch import apply_patch as _apply_tokenizer_patch  # noqa: E402
 from ._warmup_patch import apply_patch as _apply_warmup_patch  # noqa: E402
-
-_apply_tokenizer_patch()
 
 
 def _download_if_missing(model_id: str, target_dir: Path) -> None:
@@ -94,6 +91,24 @@ class TTSEngine:
         )
 
         _apply_warmup_patch(settings.fishspeech_warmup_tokens)
+
+        # Pre-flight: fish-speech's llama.py silently falls back to
+        # semantic_begin_id=0 / semantic_end_id=0 when tokenizer loading
+        # raises (try/except in DualARTransformer.from_pretrained). With
+        # those values the generation logit-bias only permits {id=0, im_end},
+        # so the model emits 1 frame of silence and stops. Fail loud here.
+        from fish_speech.tokenizer import FishTokenizer
+
+        preflight_tok = FishTokenizer.from_pretrained(str(llama_dir))
+        sbi = getattr(preflight_tok, "semantic_begin_id", 0)
+        sei = getattr(preflight_tok, "semantic_end_id", 0)
+        if sbi == 0 or sei == 0 or sbi >= sei:
+            raise RuntimeError(
+                f"Fish-Speech tokenizer loaded but semantic id range is invalid "
+                f"({sbi}..{sei}). Check that {llama_dir} contains the standard "
+                f"HuggingFace tokenizer files (tokenizer.json, tokenizer_config.json)."
+            )
+        log.info("pre-flight tokenizer check OK: semantic range %d..%d", sbi, sei)
 
         from tools.server.model_manager import ModelManager
 

@@ -60,7 +60,7 @@ docker run --rm -p 8000:8000 \
 
 首次启动会从 HuggingFace 下载模型权重到 `/checkpoints/<模型名>/`。挂载 `/checkpoints` 可让权重在容器重启后复用。
 
-> **Gated 模型**：`fishaudio/s1-mini` 需要在 HuggingFace 上接受许可证。接受后把 token 传入容器让 `huggingface_hub` 下载：
+> **Gated 模型**：`fishaudio/s2-pro` 需要在 HuggingFace 上接受许可证。接受后把 token 传入容器让 `huggingface_hub` 下载：
 >
 > ```bash
 > -e HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -68,7 +68,7 @@ docker run --rm -p 8000:8000 \
 >
 > 或者在宿主机预先下载，然后 `-v ./checkpoints:/checkpoints` 挂进来 —— 服务检测到 `codec.pth` 已存在就跳过下载。
 
-> **GPU 要求**：宿主机需安装 NVIDIA 驱动与 [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)。Windows 需 Docker Desktop + WSL2 + NVIDIA Windows 驱动。`s1-mini` 在 ≥8 GB 显存下舒适；`s2-pro`（~9 GB safetensors）bf16 下需要 ≥16 GB 显存，int8 下需要 ≥10 GB。
+> **GPU 要求**：宿主机需安装 NVIDIA 驱动与 [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)。Windows 需 Docker Desktop + WSL2 + NVIDIA Windows 驱动。`s2-pro`（4B 参数，~9 GB safetensors）bf16 下需要 ≥16 GB 显存，`FISHSPEECH_QUANTIZATION=int8` 后 ≥10 GB。**12 GB 显卡（RTX 4070 Ti 等）必须开 int8。**
 
 ### 3. docker-compose
 
@@ -138,7 +138,7 @@ curl -s http://localhost:8000/v1/audio/speech \
 | `normalize` | bool | 可选中英文文本规范化（默认 `true`） |
 | `seed` | int | 可选随机种子，用于可复现生成 |
 
-输出为单声道音频，采样率由解码器决定（`s1-mini` 通常为 44.1 kHz）；`pcm` 为裸 s16le 数据。
+输出为单声道音频，采样率由解码器决定（`s2-pro` 通常为 44.1 kHz）；`pcm` 为裸 s16le 数据。
 
 ### POST `/v1/audio/direct`
 
@@ -182,7 +182,7 @@ with client.audio.speech.with_streaming_response.create(
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `FISHSPEECH_MODEL` | `fishaudio/s1-mini` | HuggingFace 仓库 id，或 `/checkpoints/` 下的本地目录名 |
+| `FISHSPEECH_MODEL` | `fishaudio/s2-pro` | HuggingFace 仓库 id，或 `/checkpoints/` 下的本地目录名 |
 | `FISHSPEECH_CHECKPOINTS_DIR` | `/checkpoints` | 权重目录（也是首次启动的下载目标） |
 | `FISHSPEECH_DECODER_CONFIG_NAME` | `modded_dac_vq` | 解码器配置名，需与模型自带的 `codec.pth` 匹配 |
 | `FISHSPEECH_DEVICE` | `auto` | `auto` 按 CUDA > MPS > CPU 优先级；也可强制 `cuda` / `mps` / `cpu` |
@@ -235,9 +235,7 @@ docker buildx build -f docker/Dockerfile.cpu \
 - **首次启动预热**：Fish-Speech 启动时会做一次预热推理，容器的健康检查通过后才真正 ready。
 - **许可证**：Fish-Speech / OpenAudio 权重以 [Fish Audio Research License](https://github.com/fishaudio/fish-speech/blob/main/LICENSE) 发布，商用前请自行确认条款。
 - **无内置鉴权**：如需 token 访问控制，请在反向代理层（Nginx、Cloudflare 等）做。
-- **模型变体**：默认 `fishaudio/s1-mini`（原 `fishaudio/openaudio-s1-mini`，官方已改名）。`FISHSPEECH_MODEL` 可指向任何 Fish-Speech 兼容的 HuggingFace 仓库，只要包含 `codec.pth` 和 LLaMA 权重（`model.pth` 或 `model*.safetensors`）：
-  - `fishaudio/s1-mini`——~1.7 GB LLaMA + 1.9 GB codec，tiktoken tokenizer。**默认**。
-  - `fishaudio/s2-pro`——~9 GB 分片 safetensors + 标准 HF tokenizer。质量更高但也大得多；bf16 下 ≥16 GB 显存，开 `FISHSPEECH_QUANTIZATION=int8` 后 ≥10 GB。
+- **模型**：`fishaudio/s2-pro`——4B 参数，~9 GB 分片 safetensors + 标准 HF tokenizer。bf16 ≥16 GB 显存；开 `FISHSPEECH_QUANTIZATION=int8` 后 ≥10 GB。`FISHSPEECH_MODEL` 也可指向其他使用同一 S2 代码路径的 Fish-Speech 兼容仓库。
 
 ## 目录结构
 
