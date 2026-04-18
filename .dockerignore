@@ -24,9 +24,9 @@ README.zh.md
 *.md
 *.log
 
-# Keep fish-speech source but drop the heavy/untracked parts
+# Keep fish-speech source but drop the heavy/untracked parts.
+# fish-speech/uv.lock IS required — `uv sync --frozen` reads it.
 fish-speech/.git
 fish-speech/docs/
 fish-speech/awesome_webui/
 fish-speech/inference.ipynb
-fish-speech/uv.lock
