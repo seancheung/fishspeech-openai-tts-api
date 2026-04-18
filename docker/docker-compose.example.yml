@@ -1,0 +1,31 @@
+services:
+  fishspeech-cuda:
+    image: ghcr.io/seancheung/fishspeech-openai-tts-api:cuda-latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./voices:/voices:ro
+      - ./checkpoints:/checkpoints
+      - ./cache:/root/.cache
+    environment:
+      FISHSPEECH_MODEL: "fishaudio/openaudio-s1-mini"
+      FISHSPEECH_DEVICE: "cuda"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  fishspeech-cpu:
+    image: ghcr.io/seancheung/fishspeech-openai-tts-api:latest
+    ports:
+      - "8010:8000"
+    volumes:
+      - ./voices:/voices:ro
+      - ./checkpoints:/checkpoints
+      - ./cache:/root/.cache
+    environment:
+      FISHSPEECH_MODEL: "fishaudio/openaudio-s1-mini"
+      FISHSPEECH_DEVICE: "cpu"

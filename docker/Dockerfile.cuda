@@ -1,0 +1,59 @@
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    HF_HOME=/root/.cache/huggingface \
+    HF_HUB_ENABLE_HF_TRANSFER=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/opt/api/fish-speech
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.10 \
+        python3.10-venv \
+        python3-pip \
+        python3.10-dev \
+        git \
+        ffmpeg \
+        libsndfile1 \
+        libsox-dev \
+        build-essential \
+        cmake \
+        portaudio19-dev \
+        libasound-dev \
+        ca-certificates \
+    && ln -sf /usr/bin/python3.10 /usr/local/bin/python \
+    && ln -sf /usr/bin/python3.10 /usr/local/bin/python3 \
+    && python -m pip install --upgrade pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Fish-Speech pins torch==2.8.0; CUDA 12.8 wheels are the matching combo.
+RUN pip install --index-url https://download.pytorch.org/whl/cu128 \
+        torch==2.8.0 torchaudio==2.8.0
+
+WORKDIR /opt/api
+
+# descript-audiotools / descript-audio-codec pin protobuf<3.20, but fish-speech's
+# generated proto code needs >=3.20. Fish-Speech's pyproject uses uv's
+# `override-dependencies`; with pip we install descript-* with --no-deps first
+# and then force protobuf>=3.20 via PIP_CONSTRAINT for the fish-speech install.
+RUN pip install --no-deps descript-audiotools descript-audio-codec
+
+COPY fish-speech /opt/api/fish-speech
+RUN printf 'protobuf>=3.20,<6.0.0\n' > /tmp/constraints.txt && \
+    PIP_CONSTRAINT=/tmp/constraints.txt pip install /opt/api/fish-speech && \
+    pip install --upgrade "protobuf>=3.20,<6.0.0"
+
+COPY docker/requirements.api.txt /tmp/requirements.api.txt
+RUN pip install -r /tmp/requirements.api.txt
+
+COPY app /opt/api/app
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+VOLUME ["/voices", "/checkpoints", "/root/.cache"]
+EXPOSE 8000
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["uvicorn", "app.server:app", "--host", "0.0.0.0", "--port", "8000"]
