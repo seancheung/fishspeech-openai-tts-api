@@ -200,6 +200,7 @@ with client.audio.speech.with_streaming_response.create(
 | `FISHSPEECH_CHUNK_LENGTH` | `200` | 默认长文本分块长度（`100 - 1000`） |
 | `FISHSPEECH_NORMALIZE` | `true` | 请求 `normalize` 字段的默认值 |
 | `FISHSPEECH_USE_MEMORY_CACHE` | `true` | 在同一进程内缓存参考音频的 VQ 编码 |
+| `FISHSPEECH_WARMUP_TOKENS` | `64` | 启动预热时生成的 token 数。上游硬编码 1024，大模型（s2-pro）上会阻塞容器 ready 30-90 秒。设为 `0` 可完全跳过——代价是首请求更慢（开 `FISHSPEECH_COMPILE=true` 时尤甚）。 |
 | `MAX_INPUT_CHARS` | `8000` | `input` 字段上限 |
 | `DEFAULT_RESPONSE_FORMAT` | `mp3` | |
 | `HOST` | `0.0.0.0` | |

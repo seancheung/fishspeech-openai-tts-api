@@ -29,12 +29,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=ghcr.io/astral-sh/uv:0.8.15 /uv /usr/local/bin/uv
 
 WORKDIR /opt/api/fish-speech
+
+# Layer A: dep manifests only (see CUDA Dockerfile for rationale).
+COPY fish-speech/pyproject.toml fish-speech/uv.lock fish-speech/README.md ./
+
+RUN uv python pin 3.10 \
+    && uv sync --extra cpu --frozen --no-dev --no-install-project
+
+# Layer B: full source.
 COPY fish-speech /opt/api/fish-speech
 
-# See the CUDA Dockerfile for context on uv sync. --extra cpu pulls the
-# +cpu torch wheels via fish-speech's [tool.uv.sources] routing.
-RUN uv python pin 3.10 \
-    && uv sync --extra cpu --frozen --no-dev
+# Layer C: install the fish-speech project itself.
+RUN uv sync --extra cpu --frozen --no-dev
 
 ENV VIRTUAL_ENV="/opt/api/fish-speech/.venv" \
     PATH="/opt/api/fish-speech/.venv/bin:$PATH"

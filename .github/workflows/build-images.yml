@@ -91,5 +91,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.variant }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
+          # Registry-backed cache: stored as a sibling tag on GHCR, so it
+          # shares the repo's GHCR storage instead of the 10 GB GitHub
+          # Actions cache quota that this project's CUDA layer blows past.
+          cache-from: type=registry,ref=${{ steps.imgname.outputs.image }}:buildcache-${{ matrix.variant }}
+          cache-to: type=registry,ref=${{ steps.imgname.outputs.image }}:buildcache-${{ matrix.variant }},mode=max

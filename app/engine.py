@@ -34,6 +34,7 @@ _ensure_fish_speech_on_path()
 
 # Must run after fish_speech is importable and before any model load.
 from ._fish_tokenizer_patch import apply_patch as _apply_tokenizer_patch  # noqa: E402
+from ._warmup_patch import apply_patch as _apply_warmup_patch  # noqa: E402
 
 _apply_tokenizer_patch()
 
@@ -83,13 +84,16 @@ class TTSEngine:
         )
 
         log.info(
-            "loading Fish-Speech model=%s device=%s half=%s compile=%s quant=%s",
+            "loading Fish-Speech model=%s device=%s half=%s compile=%s quant=%s warmup_tokens=%d",
             settings.fishspeech_model,
             device,
             settings.fishspeech_half,
             settings.fishspeech_compile,
             self.quantization,
+            settings.fishspeech_warmup_tokens,
         )
+
+        _apply_warmup_patch(settings.fishspeech_warmup_tokens)
 
         from tools.server.model_manager import ModelManager
 

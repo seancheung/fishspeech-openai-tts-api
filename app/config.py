@@ -47,6 +47,17 @@ class Settings(BaseSettings):
     fishspeech_chunk_length: int = Field(default=200, ge=100, le=1000)
     fishspeech_normalize: bool = Field(default=True)
     fishspeech_use_memory_cache: bool = Field(default=True)
+    fishspeech_warmup_tokens: int = Field(
+        default=64,
+        ge=0,
+        le=2048,
+        description=(
+            "Tokens generated during the startup warm-up. Upstream hard-codes 1024, "
+            "which on larger models (e.g. s2-pro) can stall container readiness for "
+            "a minute or more. Set to 0 to skip warm-up entirely (first request is "
+            "then slower, especially with torch.compile)."
+        ),
+    )
 
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8000)

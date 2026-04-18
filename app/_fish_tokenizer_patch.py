@@ -16,6 +16,7 @@ the original AutoTokenizer path unchanged.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 from pathlib import Path
@@ -37,14 +38,30 @@ _QWEN_PAT_STR = (
 )
 
 
+def _load_bpe_file(path: Path) -> dict:
+    """Read a tiktoken BPE file without pulling in `blobfile`.
+
+    Format: each non-empty line is `<base64 token> <rank>`. `tiktoken.load.
+    load_tiktoken_bpe` does the same but hard-requires `blobfile` even for
+    local paths, which we don't want as a runtime dep.
+    """
+    ranks: dict = {}
+    with open(path, "rb") as f:
+        for line in f.read().splitlines():
+            if not line:
+                continue
+            token_b64, rank = line.split()
+            ranks[base64.b64decode(token_b64)] = int(rank)
+    return ranks
+
+
 class _TikTokenBackend:
     """Minimal subset of `PreTrainedTokenizerBase` needed by FishTokenizer."""
 
     def __init__(self, tiktoken_file: Path, special_tokens_file: Path):
         import tiktoken
-        from tiktoken.load import load_tiktoken_bpe
 
-        mergeable_ranks = load_tiktoken_bpe(str(tiktoken_file))
+        mergeable_ranks = _load_bpe_file(tiktoken_file)
         with open(special_tokens_file, "r", encoding="utf-8") as f:
             special_tokens: dict = json.load(f)
         if not isinstance(special_tokens, dict):

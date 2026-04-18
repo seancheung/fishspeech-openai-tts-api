@@ -200,6 +200,7 @@ Returns model name, device, sample rate and status for health checks.
 | `FISHSPEECH_CHUNK_LENGTH` | `200` | Default long-text chunk size (`100 - 1000`) |
 | `FISHSPEECH_NORMALIZE` | `true` | Default value of the `normalize` request field |
 | `FISHSPEECH_USE_MEMORY_CACHE` | `true` | Cache reference-audio VQ codes between requests (per-instance) |
+| `FISHSPEECH_WARMUP_TOKENS` | `64` | Tokens to generate during startup warm-up. Upstream hard-codes 1024 which blocks container readiness for 30-90s on large models (s2-pro). Set to `0` to skip entirely — first request will then be slower, especially with `FISHSPEECH_COMPILE=true`. |
 | `MAX_INPUT_CHARS` | `8000` | Upper bound for the `input` field |
 | `DEFAULT_RESPONSE_FORMAT` | `mp3` | |
 | `HOST` | `0.0.0.0` | |
