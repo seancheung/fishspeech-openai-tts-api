@@ -201,7 +201,7 @@ Returns model name, device, sample rate and status for health checks.
 | `FISHSPEECH_NORMALIZE` | `true` | Default value of the `normalize` request field |
 | `FISHSPEECH_USE_MEMORY_CACHE` | `true` | Cache reference-audio VQ codes between requests (per-instance) |
 | `FISHSPEECH_WARMUP_TOKENS` | `64` | Tokens to generate during startup warm-up. Upstream hard-codes 1024 which blocks container readiness for 30-90s on large models (s2-pro). Set to `0` to skip entirely — first request will then be slower, especially with `FISHSPEECH_COMPILE=true`. |
-| `FISHSPEECH_MAX_SEQ_LEN` | `4096` | Clamp `config.json:max_seq_len` (ships at 32768) to limit KV cache + causal-mask pre-allocation. The shipped 32768 burns ~3-4 GB VRAM before inference, which on 12 GB cards spills into shared memory and kills throughput. TTS chunks stay well under 2048; raise only if you hit sequence-length assertion errors. |
+| `FISHSPEECH_MAX_SEQ_LEN` | `4096` | Override `DualARTransformer`'s `max_seq_len` (ships at 32768) to limit KV cache + causal-mask pre-allocation. The shipped 32768 burns ~3-4 GB VRAM before inference, which on 12 GB cards spills into shared memory and kills throughput. **Minimum 2560** — upstream hard-codes a 2048-token reserve for generation, so allowed prompt length is `max_seq_len - 2048`; setting this ≤ 2048 raises `Prompt is too long` immediately. |
 | `MAX_INPUT_CHARS` | `8000` | Upper bound for the `input` field |
 | `DEFAULT_RESPONSE_FORMAT` | `mp3` | |
 | `HOST` | `0.0.0.0` | |

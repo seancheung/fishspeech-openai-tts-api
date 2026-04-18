@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import sys
@@ -34,46 +33,8 @@ def _ensure_fish_speech_on_path() -> None:
 _ensure_fish_speech_on_path()
 
 # Must run after fish_speech is importable and before any model load.
+from ._max_seq_len_patch import apply_patch as _apply_max_seq_len_patch  # noqa: E402
 from ._warmup_patch import apply_patch as _apply_warmup_patch  # noqa: E402
-
-
-def _clamp_max_seq_len(ckpt_dir: Path, target: int) -> None:
-    """Rewrite ckpt_dir/config.json so `max_seq_len` is at most `target`.
-
-    Fish-Speech pre-allocates a `max_seq_len × max_seq_len` causal mask and
-    a KV cache sized by `max_seq_len` at model construction time. The
-    shipped value of 32768 burns several GB of VRAM before a single token
-    is generated; clamping it here means setup_caches(model.config.max_seq_len)
-    and the __init__ mask both honor the smaller bound.
-    """
-    cfg_path = ckpt_dir / "config.json"
-    if not cfg_path.is_file():
-        return
-    try:
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-    except (OSError, json.JSONDecodeError) as e:
-        log.warning("could not read %s: %s", cfg_path, e)
-        return
-
-    current = int(cfg.get("max_seq_len", 0))
-    if current <= target:
-        return
-
-    log.info(
-        "clamping config.max_seq_len %d -> %d in %s (saves ~%.1f GB VRAM)",
-        current,
-        target,
-        cfg_path,
-        # Rough: causal mask scales quadratically (bool), KV cache linearly.
-        (current**2 - target**2) / (1024**3),
-    )
-    cfg["max_seq_len"] = target
-    try:
-        with open(cfg_path, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=2)
-    except OSError as e:
-        log.warning("could not write %s: %s", cfg_path, e)
 
 
 def _download_if_missing(model_id: str, target_dir: Path) -> None:
@@ -103,7 +64,6 @@ class TTSEngine:
 
         local_dir = settings.local_model_dir
         _download_if_missing(settings.fishspeech_model, local_dir)
-        _clamp_max_seq_len(local_dir, settings.fishspeech_max_seq_len)
 
         device = settings.resolved_device
 
@@ -120,10 +80,6 @@ class TTSEngine:
         llama_dir = self._ensure_quantized_checkpoint(
             local_dir, effective_quant, settings.fishspeech_int4_groupsize
         )
-        # Quantized checkpoints are copied from src_dir so they inherit the
-        # clamped config.json, but an existing quantized dir from a prior run
-        # with a higher limit could still be stale — be idempotent.
-        _clamp_max_seq_len(llama_dir, settings.fishspeech_max_seq_len)
 
         log.info(
             "loading Fish-Speech model=%s device=%s half=%s compile=%s quant=%s warmup_tokens=%d",
@@ -136,6 +92,9 @@ class TTSEngine:
         )
 
         _apply_warmup_patch(settings.fishspeech_warmup_tokens)
+        # Force DualARTransformer.from_pretrained to override max_seq_len.
+        # Must run before ModelManager triggers the worker-thread model load.
+        _apply_max_seq_len_patch(settings.fishspeech_max_seq_len)
 
         # Pre-flight: fish-speech's llama.py silently falls back to
         # semantic_begin_id=0 / semantic_end_id=0 when tokenizer loading

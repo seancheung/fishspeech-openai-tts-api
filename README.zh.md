@@ -201,7 +201,7 @@ with client.audio.speech.with_streaming_response.create(
 | `FISHSPEECH_NORMALIZE` | `true` | 请求 `normalize` 字段的默认值 |
 | `FISHSPEECH_USE_MEMORY_CACHE` | `true` | 在同一进程内缓存参考音频的 VQ 编码 |
 | `FISHSPEECH_WARMUP_TOKENS` | `64` | 启动预热时生成的 token 数。上游硬编码 1024，大模型（s2-pro）上会阻塞容器 ready 30-90 秒。设为 `0` 可完全跳过——代价是首请求更慢（开 `FISHSPEECH_COMPILE=true` 时尤甚）。 |
-| `FISHSPEECH_MAX_SEQ_LEN` | `4096` | 把 `config.json:max_seq_len`（上游默认 32768）夹到此值，限制 KV cache 与 causal mask 的预分配。32768 会在推理前就占 3-4 GB 显存，12 GB 卡会溢出到共享显存导致吞吐暴跌。TTS 单次 chunk 一般 <2048；出现 sequence-length assertion 再调高。 |
+| `FISHSPEECH_MAX_SEQ_LEN` | `4096` | 覆盖 `DualARTransformer` 的 `max_seq_len`（上游默认 32768），限制 KV cache 与 causal mask 的预分配。32768 会在推理前就占 3-4 GB 显存，12 GB 卡会溢出到共享显存导致吞吐暴跌。**最小值 2560**——上游硬编码保留 2048 token 给生成，允许的 prompt 长度 = `max_seq_len - 2048`，所以设 ≤2048 会立刻报 `Prompt is too long`。 |
 | `MAX_INPUT_CHARS` | `8000` | `input` 字段上限 |
 | `DEFAULT_RESPONSE_FORMAT` | `mp3` | |
 | `HOST` | `0.0.0.0` | |

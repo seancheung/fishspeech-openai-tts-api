@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     fishspeech_use_memory_cache: bool = Field(default=True)
     fishspeech_max_seq_len: int = Field(
         default=4096,
-        ge=512,
+        ge=2560,
         le=32768,
         description=(
             "Upper bound for the LLaMA KV cache / causal mask. Fish-Speech's "
@@ -57,8 +57,10 @@ class Settings(BaseSettings):
             "cache + a 1 GB causal mask before inference even starts. On "
             "12 GB cards that overflows into shared/system memory, driving "
             "generation below 0.1 tok/s. TTS rarely needs >2048 tokens in a "
-            "single chunk (chunk_length default is 200), so clamping to 4096 "
-            "is safe. Raise only if you see sequence-length assertion errors."
+            "single chunk, so 4096 is safe. "
+            "Minimum is 2560 because fish-speech hard-codes a 2048-token "
+            "reserve for generation (allowed prompt len = max_seq_len - 2048); "
+            "anything <=2048 errors out immediately with 'Prompt is too long'."
         ),
     )
     fishspeech_warmup_tokens: int = Field(
