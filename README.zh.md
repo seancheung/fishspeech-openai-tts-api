@@ -224,6 +224,58 @@ docker buildx build -f docker/Dockerfile.cpu \
   -t fishspeech-openai-tts-api:cpu .
 ```
 
+## 性能调优
+
+### 参考配置——RTX 4070 Ti（12 GB 显存）
+
+在 `s2-pro` + int8 + `torch.compile` 下实测：
+
+```bash
+-e FISHSPEECH_MODEL=fishaudio/s2-pro
+-e FISHSPEECH_QUANTIZATION=int8
+-e FISHSPEECH_MAX_SEQ_LEN=2560
+-e FISHSPEECH_COMPILE=true
+-e FISHSPEECH_WARMUP_TOKENS=128
+```
+
+### 实测性能
+
+| 指标 | 值 |
+|---|---|
+| 稳态生成速度 | **~34 tok/s** |
+| 实时率 | **~1.6×**（生成 1 秒音频实际耗时 ~0.64 秒） |
+| 显存占用 | ~11.8 GB（12 GB 卡边缘，不溢出到共享显存） |
+| 冷启动（加载 → warm-up → compile） | ~3 分钟 |
+| 热启动（容器重启、缓存命中） | ~60 秒 |
+| 任意请求（warm-up 完成后） | ~5-6 秒生成 ~8 秒音频 |
+
+注：fish-speech 每次请求都会打 `Compilation time: X seconds`——这是**误导性命名**，实际是第一个 sample 的总 generate 耗时，**不是 recompile**。`torch.compile` 只包了 `decode_one_token`，其输入 shape 固定为 `[1, codebook_dim, 1]`，跟 prompt 长度无关，**改变 prompt / 参考音频长度不会触发 recompile**。
+
+### 关闭 compile（启动快、推理慢）
+
+| 指标 | `compile=false` | `compile=true` |
+|---|---|---|
+| tok/s | ~6.9 | **~34**（5× 提速） |
+| 实时率 | 0.31× | **1.6×** |
+| 显存 | ~10 GB | ~11.8 GB |
+| 冷启动 | ~40 秒 | ~3 分钟 |
+
+仅在部署会频繁重启容器时（K8s HPA、CI、边缘短时实例）考虑关掉 compile。长跑服务一次 compile 摊薄后 ROI 明显为正。
+
+### 其他 GPU 伸缩参考
+
+| 显存 | 推荐配置 | 说明 |
+|---|---|---|
+| **< 10 GB** | 不支持 | 仅 s2-pro int8 权重就约 8 GB + 其他开销 |
+| **10-12 GB** | 上面的参考配置 | 贴边可用 |
+| **16-20 GB** | `MAX_SEQ_LEN=4096`，保留 int8 + compile | prompt 空间更宽裕，降低 recompile 触发 |
+| **24 GB+** | 去掉 `QUANTIZATION`（即 bf16） | 满精度质量；仍建议开 compile |
+
+### 权衡
+
+- **compile 的显存预算**：`torch.compile` 会多吃 ~1-2 GB 存 Triton kernel 缓存，12 GB 卡上就是因此要把 `MAX_SEQ_LEN` 调到 2560 而非 4096
+- **参考音频长度很重要**：10 秒参考 ≈ 230 VQ token prompt。控制参考 ≤ 5-7 秒可让每步 step 快 10-20%
+
 ## 局限 / 注意事项
 
 - **`speed` 字段是 no-op**：Fish-Speech 无原生语速控制；保留该字段只为让 OpenAI Python SDK 的默认请求体（总会带 `speed=1.0`）不被 422。若需调速请对返回音频做后处理。

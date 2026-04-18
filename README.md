@@ -224,6 +224,58 @@ docker buildx build -f docker/Dockerfile.cpu \
   -t fishspeech-openai-tts-api:cpu .
 ```
 
+## Performance tuning
+
+### Reference configuration — RTX 4070 Ti (12 GB VRAM)
+
+Tested with `s2-pro` + int8 + `torch.compile`:
+
+```bash
+-e FISHSPEECH_MODEL=fishaudio/s2-pro
+-e FISHSPEECH_QUANTIZATION=int8
+-e FISHSPEECH_MAX_SEQ_LEN=2560
+-e FISHSPEECH_COMPILE=true
+-e FISHSPEECH_WARMUP_TOKENS=128
+```
+
+### Observed performance
+
+| Metric | Value |
+|---|---|
+| Steady-state generation | **~34 tok/s** |
+| Real-time factor | **~1.6×** (generates 1 s audio in ~0.64 s wall-clock) |
+| GPU memory | ~11.8 GB (tight on 12 GB; no shared-memory spill) |
+| Cold start (load → warm-up → compile) | ~3 min |
+| Warm start (container restart, caches hit) | ~60 s |
+| Any request (after warm-up) | ~5-6 s for ~8 s audio |
+
+Note: fish-speech logs "Compilation time: X seconds" on every request. That's misleading — it measures the first sample's total generate time, not a recompile. `torch.compile` only wraps `decode_one_token`, whose input shape is fixed `[1, codebook_dim, 1]` regardless of prompt length, so **varying prompt / reference length does NOT trigger recompile**.
+
+### Without compile (faster startup, slower inference)
+
+| Metric | `compile=false` | `compile=true` |
+|---|---|---|
+| Tok/s | ~6.9 | **~34** (5× faster) |
+| Real-time factor | 0.31× | **1.6×** |
+| GPU memory | ~10 GB | ~11.8 GB |
+| Cold start | ~40 s | ~3 min |
+
+Disable compile only if your deployment restarts the container frequently (K8s HPA, CI, edge short-lived instances). For long-lived services the compile tax pays itself off after the first few requests.
+
+### Scaling to other GPUs
+
+| VRAM | Recommended config | Notes |
+|---|---|---|
+| **< 10 GB** | Not supported | s2-pro int8 alone is ~8 GB + overhead |
+| **10-12 GB** | Above reference config | Tight but works |
+| **16-20 GB** | `MAX_SEQ_LEN=4096`, keep int8 + compile | More prompt headroom, less chance of recompile |
+| **24 GB+** | Drop `QUANTIZATION=none` for bf16 | Full-precision quality; compile still recommended |
+
+### Trade-offs
+
+- **Compile memory budget**: `torch.compile` adds ~1-2 GB for the Triton kernel cache. On 12 GB cards this is why `MAX_SEQ_LEN=2560` (not 4096) is recommended
+- **Reference audio length matters**: a 10 s reference ≈ 230 VQ tokens of prompt. Keeping references ≤ 5-7 s speeds up each generation step by 10-20 %
+
 ## Caveats
 
 - **`speed` is a no-op.** Fish-Speech has no native speed control, but the field is kept in the schema so that OpenAI's Python SDK default request body (which always sends `speed=1.0`) does not 422. If you need tempo control, post-process the returned audio.
